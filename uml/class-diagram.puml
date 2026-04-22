@@ -1,0 +1,124 @@
+@startuml ClassDiagram
+title Collaborative Document System - Domain Model
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+
+package "Entities" {
+  class User {
+    +id: UUID
+    +name: String
+    +email: String
+    +password_hash: String
+    +created_at: DateTime
+    +updated_at: DateTime
+    +toDTO(): UserDTO
+  }
+
+  class Workspace {
+    +id: UUID
+    +name: String
+    +owner_id: UUID
+    +created_at: DateTime
+    +updated_at: DateTime
+    +addCollaborator(): void
+    +removeCollaborator(): void
+  }
+
+  class Document {
+    +id: UUID
+    +title: String
+    +workspace_id: UUID
+    +created_by: UUID
+    +is_deleted: Boolean
+    +created_at: DateTime
+    +updated_at: DateTime
+    +softDelete(): void
+    +restore(): void
+  }
+
+  class DocumentBlock {
+    +id: UUID
+    +document_id: UUID
+    +type: BlockType
+    +content: JSONB
+    +position: Float
+    +version: Integer
+    +created_at: DateTime
+    +updated_at: DateTime
+    +updateContent(): Boolean
+    +incrementVersion(): void
+  }
+
+  class DocumentVersion {
+    +id: UUID
+    +document_id: UUID
+    +snapshot: JSONB
+    +created_at: DateTime
+    +updated_at: DateTime
+  }
+
+  class Collaborator {
+    +id: UUID
+    +user_id: UUID
+    +document_id: UUID
+    +role: Role
+    +created_at: DateTime
+    +updated_at: DateTime
+    +hasPermission(): Boolean
+  }
+
+  class ActivityLog {
+    +id: UUID
+    +user_id: UUID
+    +document_id: UUID
+    +action: ActionType
+    +metaData: JSONB
+    +created_at: DateTime
+    +updated_at: DateTime
+  }
+}
+
+package "Enums" {
+  enum Role {
+    OWNER
+    EDITOR
+    VIEWER
+  }
+  enum BlockType {
+    TEXT
+    HEADING
+    LIST
+    CODE
+    IMAGE
+  }
+  enum ActionType {
+    CREATE
+    EDIT
+    DELETE
+    SHARE
+  }
+}
+
+' Relationships
+User "1" -- "0..*" Workspace : owns >
+User "1" -- "0..*" Collaborator : participates in >
+Workspace "1" -- "0..*" Document : contains >
+Document "1" -- "0..*" DocumentBlock : composed of >
+Document "1" -- "0..*" DocumentVersion : versioned as >
+Document "1" -- "0..*" Collaborator : has access via >
+Document "1" -- "0..*" ActivityLog : logged in >
+User "1" -- "0..*" ActivityLog : triggers >
+
+' Constraints
+note right of DocumentBlock::version
+  Optimistic locking:
+  increment on each update
+end note
+
+note right of Collaborator::role
+  RBAC enforced at
+  service layer
+end note
+
+@enduml

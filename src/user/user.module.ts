@@ -5,9 +5,9 @@ import { UserService } from './user.service';
 import { UserController } from './user.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User])],
+  imports: [TypeOrmModule.forFeature([User])], //Registers Repository<User>
   controllers: [UserController],
   providers: [UserService],
-  exports: [UserService],
+  exports: [UserService], //Allows AuthModule to inject this later
 })
 export class UserModule {}

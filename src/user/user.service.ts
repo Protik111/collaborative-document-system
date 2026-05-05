@@ -34,8 +34,28 @@ export class UserService {
     return this.toResponse(savedUser);
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.userRepo.findOne({ where: { email } });
+  async findByEmailForAuth(email: string): Promise<User | null> {
+    return this.userRepo.findOne({
+      where: { email },
+      select: [
+        'id',
+        'email',
+        'password_hash',
+        'name',
+        'created_at',
+        'updated_at',
+        'deleted_at',
+      ],
+    });
+  }
+
+  async findByEmailPublic(
+    email: string,
+  ): Promise<Omit<User, 'password_hash'> | null> {
+    return this.userRepo.findOne({
+      where: { email },
+      select: ['id', 'email', 'name', 'created_at', 'updated_at'], // Exclude password_hash
+    });
   }
 
   private toResponse(user: User): UserResponseDto {

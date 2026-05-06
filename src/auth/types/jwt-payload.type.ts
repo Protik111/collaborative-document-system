@@ -1,8 +1,6 @@
-// src/auth/types/jwt-payload.type.ts
 export interface JwtPayload {
   sub: string; // user ID (standard JWT "subject" claim)
-  email?: string; // custom claim
-  // Add other claims here as needed (e.g., roles, workspaceId)
+  email?: string;
 }
 
 export interface RefreshPayload {

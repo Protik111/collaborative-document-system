@@ -12,6 +12,7 @@ import {
 } from 'typeorm';
 import { Workspace } from '../../workspace/entities/workspace.entity';
 import { User } from '../../user/user.entity';
+import { DocumentBlock } from './document-block.entity';
 // import { DocumentBlock } from './document-block.entity'; // We'll create this next
 
 @Entity('documents')
@@ -45,8 +46,8 @@ export class Document {
   created_by!: string | null;
 
   // Blocks contain the actual document content (for collaborative editing)
-  //   @OneToMany(() => DocumentBlock, (block) => block.document, { cascade: true })
-  //   blocks!: DocumentBlock[];
+  @OneToMany(() => DocumentBlock, (block) => block.document, { cascade: true })
+  blocks!: DocumentBlock[];
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at!: Date;

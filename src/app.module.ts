@@ -3,10 +3,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { getDatabaseConfig } from './config/database.config';
 import { AuthModule } from './auth/auth.module';
-import { WorkspaceModule } from './workspace/workspace.module';
 import { DocumentModule } from './document/document.module';
 import { UserModule } from './user/user.module';
 import { HealthController } from './health.controller';
+import { WorkspaceModule } from './workspace/workspace.module';
+import { WorkspaceMemberModule } from './workspace-member/workspace-member.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { HealthController } from './health.controller';
     WorkspaceModule,
     DocumentModule,
     UserModule,
+    WorkspaceMemberModule,
   ],
   controllers: [HealthController],
 })

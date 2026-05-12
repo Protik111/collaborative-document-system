@@ -3,6 +3,7 @@ import { DocumentService } from './document.service';
 import { DocumentController } from './document.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentBlock } from './entities/document-block.entity';
+import { Document } from './entities/document.entity';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Document, DocumentBlock])],

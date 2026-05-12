@@ -10,7 +10,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { User } from '../../user/user.entity';
+import { User } from '../../user/entities/user.entity';
 import { WorkspaceMember } from 'src/workspace-member/entities/workspace-member.entity';
 import { Document } from 'src/document/entities/document.entity';
 

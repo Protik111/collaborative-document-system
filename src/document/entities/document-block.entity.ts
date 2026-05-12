@@ -9,7 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { Document } from './document.entity';
-import { User } from '../../user/user.entity';
+import { User } from '../../user/entities/user.entity';
 
 export enum BlockType {
   PARAGRAPH = 'paragraph',

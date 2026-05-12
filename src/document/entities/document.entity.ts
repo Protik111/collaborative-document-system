@@ -11,7 +11,7 @@ import {
   Index,
 } from 'typeorm';
 import { Workspace } from '../../workspace/entities/workspace.entity';
-import { User } from '../../user/user.entity';
+import { User } from '../../user/entities/user.entity';
 import { DocumentBlock } from './document-block.entity';
 // import { DocumentBlock } from './document-block.entity'; // We'll create this next
 

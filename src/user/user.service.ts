@@ -58,6 +58,13 @@ export class UserService {
     });
   }
 
+  async findById(id: string): Promise<User | null> {
+    return this.userRepo.findOne({
+      where: { id },
+      select: ['id', 'email', 'name', 'created_at', 'updated_at'], // No password_hash needed
+    });
+  }
+
   private toResponse(user: User): UserResponseDto {
     const { password_hash, deleted_at, ...safeUser } = user;
     return safeUser;

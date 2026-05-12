@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { UserService } from '../user/user.service';
 import { LoginUserDto } from '../user/dto/login-user.dto';
 import * as bcrypt from 'bcrypt';
-import { JwtPayload } from './types/jwt-payload.type';
+import { JwtPayload, RefreshPayload } from './types/jwt-payload.type';
 
 @Injectable()
 export class AuthService {
@@ -73,36 +73,43 @@ export class AuthService {
   }
 
   // Optional: Refresh token endpoint logic (we'll add this in Step 3.3)
-  async refreshTokens(refreshToken: string) {
-    try {
-      const refreshSecret = this.config.get<string>('JWT_REFRESH_SECRET');
-      const jwtSecret = this.config.get<string>('JWT_SECRET');
-      const jwtExpiresIn = this.config.get<string>('JWT_EXPIRES_IN');
+  // src/auth/auth.service.ts
+async refreshTokens(refreshToken: string) {
+  try {
+    // 1. Verify refresh token signature + expiration
+    const payload = this.jwtService.verify<RefreshPayload>(refreshToken, {
+      secret: this.config.get<string>('JWT_REFRESH_SECRET'),
+    });
 
-      if (!refreshSecret || !jwtSecret || !jwtExpiresIn) {
-        throw new Error('Missing JWT configuration');
-      }
-
-      const payload = this.jwtService.verify(refreshToken, {
-        secret: refreshSecret,
-      });
-
-      const user = await this.userService.findByEmailForAuth(payload.email);
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-
-      const newAccessToken = this.jwtService.sign(
-        { email: user.email } as JwtPayload,
-        {
-          secret: jwtSecret,
-          expiresIn: jwtExpiresIn,
-        } as JwtSignOptions,
-      );
-
-      return { access_token: newAccessToken };
-    } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+    // 2. Fetch user by ID (minimal query, no password)
+    const user = await this.userService.findById(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
     }
+
+    // 3. Generate NEW access token (keep refresh token same for now)
+    const newAccessToken = this.jwtService.sign<JwtPayload>(
+      { sub: user.id, email: user.email },
+      {
+        secret: this.config.get<string>('JWT_SECRET'),
+        expiresIn: this.config.get<string>('JWT_EXPIRES_IN'),
+      } as JwtSignOptions,
+    );
+
+    return { access_token: newAccessToken };
+
+  } catch (error) {
+    // Distinguish error types for better client UX + security
+    if (error instanceof Error && error.name === 'TokenExpiredError') {
+      throw new UnauthorizedException('Refresh token expired. Please login again.');
+    }
+    if (error instanceof Error && error.name === 'JsonWebTokenError') {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+    // Fallback for any other error
+    throw new UnauthorizedException('Failed to refresh token.');
   }
+}
+
+
 }

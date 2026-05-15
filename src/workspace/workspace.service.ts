@@ -1,4 +1,9 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Workspace } from './entities/workspace.entity';
 import { Repository, In, IsNull } from 'typeorm';
@@ -73,6 +78,35 @@ export class WorkspaceService {
       order: { created_at: 'DESC' },
     });
     return workspaces.map((w) => this.toResponse(w));
+  }
+
+  /**
+   * Get workspace details by ID, only if user is a member
+   */
+  async findByIdForUser(
+    workspaceId: string,
+    userId: string,
+  ): Promise<WorkspaceResponseDto> {
+    const workspace = await this.workspaceRepository.findOne({
+      where: { id: workspaceId, owner_id: userId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    //verify membership
+    const membership = await this.memberRepository.findOne({
+      where: { workspace_id: workspaceId, user_id: userId },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException(
+        'Access denied. You are not a member of this workspace',
+      );
+    }
+
+    return this.toResponse(workspace, membership.role);
   }
 
   /**

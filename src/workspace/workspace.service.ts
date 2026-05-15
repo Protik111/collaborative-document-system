@@ -13,6 +13,7 @@ import {
 } from 'src/workspace-member/entities/workspace-member.entity';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspaceResponseDto } from './dto/workspace-response.dto';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
 @Injectable()
 export class WorkspaceService {
@@ -107,6 +108,67 @@ export class WorkspaceService {
     }
 
     return this.toResponse(workspace, membership.role);
+  }
+
+  /**
+   * update workspace details, only if user is OWNER or ADMIN
+   */
+  async update(
+    workspaceId: string,
+    updateDto: UpdateWorkspaceDto,
+    userId: string,
+  ): Promise<WorkspaceResponseDto> {
+    // 1. check authorization
+    await this.requireRole(workspaceId, userId, [
+      WorkspaceRole.OWNER,
+      WorkspaceRole.ADMIN,
+    ]);
+
+    // 2. if name is being updated, check for duplicates
+    if (updateDto?.name) {
+      const existing = await this.workspaceRepository.findOne({
+        where: { name: updateDto.name, owner_id: userId, id: workspaceId },
+        withDeleted: true,
+      });
+      if (existing) {
+        throw new ConflictException(
+          'You already have a workspace with this name',
+        );
+      }
+    }
+
+    // 3. update workspace and return updated details
+    await this.workspaceRepository.update(workspaceId, {
+      name: updateDto.name,
+      description: updateDto.description,
+    });
+
+    const updated = await this.workspaceRepository.findOne({
+      where: { id: workspaceId },
+    });
+
+    if (!updated) {
+      throw new NotFoundException('Workspace not found after update');
+    }
+
+    return this.toResponse(updated);
+  }
+
+  /**
+   * Helper to check if user has one of the required roles in the workspace
+   */
+  private async requireRole(
+    workspaceId: string,
+    userId: string,
+    roles: WorkspaceRole[],
+  ): Promise<void> {
+    const membership = await this.memberRepository.findOne({
+      where: { workspace_id: workspaceId, user_id: userId },
+    });
+
+    if (!membership || !roles.includes(membership.role)) {
+      throw new ForbiddenException('Access denied. Insufficient permissions');
+    }
   }
 
   /**

@@ -155,6 +155,23 @@ export class WorkspaceService {
   }
 
   /**
+   * Soft delete a workspace, only if user is OWNER
+   */
+  async remove(workspaceId: string, userId: string): Promise<void> {
+    await this.requireRole(workspaceId, userId, [WorkspaceRole.OWNER]);
+
+    const workspace = await this.workspaceRepository.findOne({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    await this.workspaceRepository.softDelete(workspaceId);
+  }
+
+  /**
    * Helper to check if user has one of the required roles in the workspace
    */
   private async requireRole(

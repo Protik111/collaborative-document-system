@@ -20,7 +20,7 @@ export class WorkspaceService {
   constructor(
     @InjectRepository(Workspace)
     private workspaceRepository: Repository<Workspace>,
-    @InjectRepository(Workspace)
+    @InjectRepository(WorkspaceMember)
     private memberRepository: Repository<WorkspaceMember>,
   ) {}
 
@@ -162,6 +162,7 @@ export class WorkspaceService {
 
     const workspace = await this.workspaceRepository.findOne({
       where: { id: workspaceId },
+      withDeleted: true,
     });
 
     if (!workspace) {

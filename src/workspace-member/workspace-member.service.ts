@@ -97,4 +97,36 @@ export class WorkspaceMemberService {
     membership.updated_at = new Date();
     return this.memberRepo.save(membership);
   }
+
+  /**
+   * Remove member from workspace (soft delete)
+   */
+  async removeMember(
+    workspaceId: string,
+    targetUserId: string,
+    actedByUserId: string,
+  ): Promise<void> {
+    // Can't remove OWNER
+    if (targetUserId === actedByUserId) {
+      // Self-leave: allowed
+    }
+
+    const membership = await this.memberRepo.findOne({
+      where: { workspace_id: workspaceId, user_id: targetUserId },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('Member not found');
+    }
+
+    if (
+      membership.role === WorkspaceRole.OWNER &&
+      targetUserId !== actedByUserId
+    ) {
+      throw new ForbiddenException('Cannot remove OWNER from workspace');
+    }
+
+    // Soft delete
+    await this.memberRepo.softDelete(membership.id);
+  }
 }

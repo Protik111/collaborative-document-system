@@ -1,4 +1,9 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   WorkspaceMember,
@@ -13,6 +18,9 @@ export class WorkspaceMemberService {
     private memberRepo: Repository<WorkspaceMember>,
   ) {}
 
+  /**
+   * Add a user to a workspace with a specific role
+   */
   async addMember(
     workspaceId: string,
     userId: string,
@@ -42,6 +50,51 @@ export class WorkspaceMemberService {
       role,
     });
 
+    return this.memberRepo.save(membership);
+  }
+
+  /**
+   * Get member info with user details (for responses)
+   */
+  //   async getMemberInfo(workspaceId: string, userId: string): Promise<(WorkspaceMember & {user: Pick<User, 'id' | 'email' | 'name'>}) | null> {
+  //     return this.memberRepo
+  //         .createQueryBuilder('')
+  //   }
+
+  /**
+   * Update a member's role in a workspace (OWNER only)
+   */
+  async updateMemberRole(
+    workspaceId: string,
+    targetUserId: string,
+    newRole: WorkspaceRole,
+    actedByUserId: string,
+  ): Promise<WorkspaceMember> {
+    // Prevent demoting OWNER or changing OWNER role
+    const membership = await this.memberRepo.findOne({
+      where: { workspace_id: workspaceId, user_id: targetUserId },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('Membership not found');
+    }
+
+    if (membership.role === WorkspaceRole.OWNER) {
+      throw new ForbiddenException('Cannot change role of the OWNER');
+    }
+
+    // Only OWNER can assign OWNER/ADMIN roles
+    if ([WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(newRole)) {
+      const actorMembership = await this.memberRepo.findOne({
+        where: { workspace_id: workspaceId, user_id: actedByUserId },
+      });
+      if (actorMembership?.role !== WorkspaceRole.OWNER) {
+        throw new ForbiddenException('Only OWNER can assign elevated roles');
+      }
+    }
+
+    membership.role = newRole;
+    membership.updated_at = new Date();
     return this.memberRepo.save(membership);
   }
 }

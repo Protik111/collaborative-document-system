@@ -18,6 +18,7 @@ import { InviteMemberDto } from './dto/invite-member.dto';
 import { MemberResponseDto } from './dto/member-response.dto';
 import { WorkspaceMemberService } from 'src/workspace-member/workspace-member.service';
 import { WorkspaceRole } from 'src/workspace-member/entities/workspace-member.entity';
+import { UpdateRoleDto } from './dto/update-role.dto';
 
 @Controller('workspace')
 @UseGuards(JwtAuthGuard) // Ensure all routes require authentication
@@ -108,18 +109,19 @@ export class WorkspaceController {
   async updateMemberRole(
     @Param('id') workspaceId: string,
     @Param('userId') userId: string,
-    @Body() updateDto: { role: WorkspaceRole },
+    @Body() updateDto: UpdateRoleDto,
     @Req() req: Request,
   ): Promise<MemberResponseDto> {
     const user = req.user as { userId: string };
     // Verify requester is a member of the workspace
     await this.workspaceService.findByIdForUser(workspaceId, user.userId);
-    return this.workspaceMemberService.updateMemberRole(
+    const result = await this.workspaceMemberService.updateMemberRole(
       workspaceId,
       userId,
       updateDto.role,
       user.userId,
     );
+    return result as unknown as MemberResponseDto;
   }
 
   @Delete(':id/members/:userId')
@@ -129,20 +131,6 @@ export class WorkspaceController {
     @Req() req: Request,
   ): Promise<{ message: string }> {
     const user = req.user as { userId: string };
-
-    // Allow self-leave, otherwise require OWNER/ADMIN
-    if (user.userId !== targetUserId) {
-      const member = await this.workspaceMemberService.findOne(
-        workspaceId,
-        user.userId,
-      );
-      if (
-        !member ||
-        ![WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(member.role)
-      ) {
-        throw new Error('Insufficient permissions');
-      }
-    }
 
     await this.workspaceMemberService.removeMember(
       workspaceId,

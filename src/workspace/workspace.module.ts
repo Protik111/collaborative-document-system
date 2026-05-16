@@ -4,9 +4,13 @@ import { WorkspaceController } from './workspace.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Workspace } from './entities/workspace.entity';
 import { WorkspaceMember } from 'src/workspace-member/entities/workspace-member.entity';
+import { WorkspaceMemberModule } from 'src/workspace-member/workspace-member.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Workspace, WorkspaceMember])],
+  imports: [
+    TypeOrmModule.forFeature([Workspace, WorkspaceMember]),
+    WorkspaceMemberModule,
+  ],
   controllers: [WorkspaceController],
   providers: [WorkspaceService],
   exports: [WorkspaceService],

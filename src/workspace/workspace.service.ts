@@ -14,6 +14,9 @@ import {
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspaceResponseDto } from './dto/workspace-response.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
+import { MemberResponseDto } from './dto/member-response.dto';
+import { UserService } from 'src/user/user.service';
+import { WorkspaceMemberService } from 'src/workspace-member/workspace-member.service';
 
 @Injectable()
 export class WorkspaceService {
@@ -22,6 +25,8 @@ export class WorkspaceService {
     private workspaceRepository: Repository<Workspace>,
     @InjectRepository(WorkspaceMember)
     private memberRepository: Repository<WorkspaceMember>,
+    private readonly userService: UserService,
+    private readonly workspaceMemberService: WorkspaceMemberService,
   ) {}
 
   /**
@@ -170,6 +175,55 @@ export class WorkspaceService {
     }
 
     await this.workspaceRepository.softDelete(workspaceId);
+  }
+
+  /**
+   * Invite a user to join workspace by email
+   */
+  async inviteMember(
+    workspaceId: string,
+    inviterId: string,
+    inviteDto: { email: string; role: WorkspaceRole },
+  ): Promise<MemberResponseDto> {
+    // 1. Verify inviter has permission (OWNER or ADMIN)
+    await this.requireRole(workspaceId, inviterId, [
+      WorkspaceRole.OWNER,
+      WorkspaceRole.ADMIN,
+    ]);
+
+    // 2. Find user by email
+    const user = await this.userService.findByEmailPublic(inviteDto.email);
+
+    if (!user) {
+      throw new NotFoundException('User with this email does not exist');
+    }
+
+    // 3. Prevent inviting OWNER role via invite (security)
+    if ([WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(inviteDto.role)) {
+      // Only OWNER can assign elevated roles, and not via public invite
+      const inviterMembership = await this.memberRepository.findOne({
+        where: { workspace_id: workspaceId, user_id: inviterId },
+      });
+      if (inviterMembership?.role !== WorkspaceRole.OWNER) {
+        throw new ForbiddenException('Only OWNER can assign elevated roles');
+      }
+    }
+
+    // 4. Add member via WorkspaceMemberService
+    const membership = await this.workspaceMemberService.addMember(
+      workspaceId,
+      user.id,
+      inviteDto.role,
+    );
+
+    // 5. Return safe response
+    return {
+      user_id: user.id,
+      email: user.email,
+      name: user.name,
+      role: membership.role,
+      joined_at: membership.created_at,
+    };
   }
 
   /**

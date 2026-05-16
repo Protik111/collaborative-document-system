@@ -14,6 +14,8 @@ import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { Request } from 'express';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth-guard';
+import { InviteMemberDto } from './dto/invite-member.dto';
+import { MemberResponseDto } from './dto/member-response.dto';
 
 @Controller('workspace')
 @UseGuards(JwtAuthGuard) // Ensure all routes require authentication
@@ -55,5 +57,19 @@ export class WorkspaceController {
   async remove(@Param('id') id: string, @Req() req: Request) {
     const user = req.user as { userId: string };
     return this.workspaceService.remove(id, user.userId);
+  }
+
+  @Post(':id/invite')
+  async inviteMember(
+    @Param('id') workspaceId: string,
+    @Body() inviteDto: InviteMemberDto,
+    @Req() req: Request,
+  ): Promise<MemberResponseDto> {
+    const user = req.user as { userId: string };
+    return this.workspaceService.inviteMember(
+      workspaceId,
+      user.userId,
+      inviteDto,
+    );
   }
 }

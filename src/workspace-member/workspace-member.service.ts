@@ -10,6 +10,8 @@ import {
   WorkspaceRole,
 } from './entities/workspace-member.entity';
 import { Repository } from 'typeorm';
+import { User } from 'src/user/entities/user.entity';
+import { MemberResponseDto } from 'src/workspace/dto/member-response.dto';
 
 @Injectable()
 export class WorkspaceMemberService {
@@ -54,13 +56,29 @@ export class WorkspaceMemberService {
   }
 
   /**
-   * Get member info with user details (for responses)
+   * Get member info with user details (for response)
    */
-  //   async getMemberInfo(workspaceId: string, userId: string): Promise<(WorkspaceMember & {user: Pick<User, 'id' | 'email' | 'name'>}) | null> {
-  //     return this.memberRepo
-  //         .createQueryBuilder('')
-  //   }
-
+  async getMemberWithUser(
+    workspaceId: string,
+    userId: string,
+  ): Promise<
+    (WorkspaceMember & { user: Pick<User, 'id' | 'email' | 'name'> }) | null
+  > {
+    return this.memberRepo
+      .createQueryBuilder('member')
+      .innerJoinAndSelect('member.user', 'user')
+      .where('member.workspace_id = :workspaceId', { workspaceId })
+      .andWhere('member.user_id = :userId', { userId })
+      .select([
+        'member.id',
+        'member.role',
+        'member.created_at',
+        'user.id',
+        'user.email',
+        'user.name',
+      ])
+      .getOne() as Promise<any>;
+  }
   /**
    * Update a member's role in a workspace (OWNER only)
    */
@@ -128,5 +146,66 @@ export class WorkspaceMemberService {
 
     // Soft delete
     await this.memberRepo.softDelete(membership.id);
+  }
+
+  /**
+   * List all active members in a workspace (with user details)
+   */
+  async findAllByWorkspace(workspaceId: string): Promise<MemberResponseDto[]> {
+    const members = await this.memberRepo
+      .createQueryBuilder('member')
+      .innerJoinAndSelect('member.user', 'user')
+      .where('member.workspace_id = :workspaceId', { workspaceId })
+      .andWhere('member.deleted_at IS NULL') // Only active members
+      .select([
+        'member.id',
+        'member.role',
+        'member.created_at',
+        'user.id',
+        'user.email',
+        'user.name',
+      ])
+      .getMany();
+
+    return members.map((m) => ({
+      user_id: m.user.id,
+      email: m.user.email,
+      name: m.user.name,
+      role: m.role,
+      joined_at: m.created_at,
+    }));
+  }
+
+  /**
+   * Get single member details
+   */
+  async findOne(
+    workspaceId: string,
+    userId: string,
+  ): Promise<MemberResponseDto | null> {
+    const member = await this.memberRepo
+      .createQueryBuilder('member')
+      .innerJoinAndSelect('member.user', 'user')
+      .where('member.workspace_id = :workspaceId', { workspaceId })
+      .andWhere('member.user_id = :userId', { userId })
+      .select([
+        'member.id',
+        'member.role',
+        'member.created_at',
+        'user.id',
+        'user.email',
+        'user.name',
+      ])
+      .getOne();
+
+    if (!member) return null;
+
+    return {
+      user_id: member.user.id,
+      email: member.user.email,
+      name: member.user.name,
+      role: member.role,
+      joined_at: member.created_at,
+    };
   }
 }

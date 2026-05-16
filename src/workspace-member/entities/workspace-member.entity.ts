@@ -3,6 +3,7 @@ import { Workspace } from 'src/workspace/entities/workspace.entity';
 import {
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -53,4 +54,7 @@ export class WorkspaceMember {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updated_at!: Date;
+
+  @DeleteDateColumn({ type: 'timestamptz' })
+  deleted_at!: Date | null;
 }

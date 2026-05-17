@@ -1,10 +1,15 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Document } from './entities/document.entity';
 import { Repository } from 'typeorm';
 import { WorkspaceMemberService } from 'src/workspace-member/workspace-member.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { DocumentResponseDto } from './dto/document-response.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
 
 @Injectable()
 export class DocumentService {
@@ -66,6 +71,46 @@ export class DocumentService {
       data: documents.map((doc) => this.toResponse(doc)),
       total,
     };
+  }
+
+  /**
+   * update a document's title and content preview
+   */
+  async updateDocument(
+    documentId: string,
+    userId: string,
+    dto: UpdateDocumentDto,
+  ): Promise<DocumentResponseDto> {
+    const doc = await this.documentRepo.findOne({
+      where: { id: documentId },
+    });
+    if (!doc) {
+      throw new NotFoundException('Document not found');
+    }
+
+    await this.verifymembership(doc.workspace_id, userId);
+
+    await this.documentRepo.update(documentId, {
+      title: dto.title,
+      content_preview: dto.content_preview ?? null,
+    });
+
+    const updated = await this.documentRepo.findOne({
+      where: { id: documentId },
+    });
+    return this.toResponse(updated!);
+  }
+
+  /**
+   * Remove a document (soft delete)
+   */
+  async remove(documentId: string, userId: string): Promise<void> {
+    const doc = await this.documentRepo.findOne({ where: { id: documentId } });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    await this.verifymembership(doc.workspace_id, userId);
+
+    await this.documentRepo.softDelete(documentId);
   }
 
   private toResponse(document: DocumentResponseDto): DocumentResponseDto {

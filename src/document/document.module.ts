@@ -4,9 +4,13 @@ import { DocumentController } from './document.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentBlock } from './entities/document-block.entity';
 import { Document } from './entities/document.entity';
+import { WorkspaceMemberModule } from 'src/workspace-member/workspace-member.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Document, DocumentBlock])],
+  imports: [
+    TypeOrmModule.forFeature([Document, DocumentBlock]),
+    WorkspaceMemberModule,
+  ],
   controllers: [DocumentController],
   providers: [DocumentService],
   exports: [DocumentService],

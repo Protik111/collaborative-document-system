@@ -113,6 +113,21 @@ export class DocumentService {
     await this.documentRepo.softDelete(documentId);
   }
 
+  /**
+   * Find one document by ID (with access check)
+   */
+  async findOne(
+    documentId: string,
+    userId: string,
+  ): Promise<DocumentResponseDto> {
+    const doc = await this.documentRepo.findOne({ where: { id: documentId } });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    await this.verifymembership(doc.workspace_id, userId);
+
+    return this.toResponse(doc);
+  }
+
   private toResponse(document: DocumentResponseDto): DocumentResponseDto {
     return {
       id: document.id,

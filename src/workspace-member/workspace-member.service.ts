@@ -208,4 +208,14 @@ export class WorkspaceMemberService {
       joined_at: member.created_at,
     };
   }
+
+  /**
+   * Check if a user is a member of a workspace (at least VIEWER)
+   */
+  async hasMember(workspaceId: string, userId: string): Promise<boolean> {
+    const membership = await this.memberRepo.findOne({
+      where: { workspace_id: workspaceId, user_id: userId },
+    });
+    return !!membership;
+  }
 }

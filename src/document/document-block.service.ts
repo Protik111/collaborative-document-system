@@ -1,11 +1,12 @@
 import { InjectRepository } from '@nestjs/typeorm';
 import { DocumentBlock } from './entities/document-block.entity';
-import { Repository } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 import { Document } from './entities/document.entity';
 import { WorkspaceMemberService } from 'src/workspace-member/workspace-member.service';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CreateBlockDto } from './dto/create-block.dto';
 import { BlockResponseDto } from './dto/block-response.dto';
+import { UpdateBlockDto } from './dto/update-block.dto';
 
 export class DocumentBlockService {
   constructor(
@@ -89,6 +90,82 @@ export class DocumentBlockService {
     });
 
     return blocks.map((b) => this.toResponse(b));
+  }
+
+  /**
+   * Update a document block's content, type, or position
+   * @param blockId
+   * @param document_id
+   * @param userId
+   * @param dto
+   * @returns
+   */
+  async update(
+    blockId: string,
+    document_id: string,
+    userId: string,
+    dto: UpdateBlockDto,
+  ): Promise<BlockResponseDto> {
+    await this.requireAccess(document_id, userId);
+
+    const block = await this.blockRepo.findOne({
+      where: { id: blockId, document_id: document_id },
+    });
+    if (!block) {
+      throw new NotFoundException('Block not found');
+    }
+
+    // Handle position shift if changed
+    if (dto.position !== undefined && dto.position !== block.position) {
+      await this.shiftPositions(document_id, block.position, dto.position);
+    }
+
+    await this.blockRepo.update(blockId, {
+      type: dto.type,
+      content: dto.content,
+      position: dto.position ?? block.position,
+      last_edited_by_id: userId,
+    });
+
+    const updated = await this.blockRepo.findOne({ where: { id: blockId } });
+    return this.toResponse(updated!);
+  }
+
+  /**
+   * Soft delete a block (mark as deleted without removing from DB)
+   */
+  async remove(blockId: string, docId: string, userId: string): Promise<void> {
+    await this.requireAccess(docId, userId);
+
+    const block = await this.blockRepo.findOne({
+      where: { id: blockId, document_id: docId },
+    });
+    if (!block) throw new NotFoundException('Block not found');
+
+    await this.blockRepo.softDelete(blockId);
+  }
+
+  /**
+   * Shift positions when a block is moved
+   */
+  private async shiftPositions(
+    docId: string,
+    oldPos: number,
+    newPos: number,
+  ): Promise<void> {
+    if (oldPos < newPos) {
+      // Moving down: shift blocks between old+1 and newPos up by -1
+      await this.blockRepo.update(
+        { document_id: docId, position: Between(oldPos + 1, newPos) },
+        { position: () => '"position" - 1' },
+      );
+    } else {
+      // Moving up: shift blocks between newPos and old-1 down by +1
+      await this.blockRepo.update(
+        { document_id: docId, position: Between(newPos, oldPos - 1) },
+        { position: () => '"position" + 1' },
+      );
+    }
   }
 
   private toResponse(block: DocumentBlock): BlockResponseDto {

@@ -71,6 +71,26 @@ export class DocumentBlockService {
     return this.toResponse(saved);
   }
 
+  /**
+   * find all document blocks for a document, ordered by position
+   * @param documentId
+   * @param userId
+   * @returns
+   */
+  async findAll(
+    documentId: string,
+    userId: string,
+  ): Promise<BlockResponseDto[]> {
+    await this.requireAccess(documentId, userId);
+
+    const blocks = await this.blockRepo.find({
+      where: { document_id: documentId },
+      order: { position: 'ASC' },
+    });
+
+    return blocks.map((b) => this.toResponse(b));
+  }
+
   private toResponse(block: DocumentBlock): BlockResponseDto {
     return {
       id: block.id,

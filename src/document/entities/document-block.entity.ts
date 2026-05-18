@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  DeleteDateColumn,
 } from 'typeorm';
 import { Document } from './document.entity';
 import { User } from '../../user/entities/user.entity';
@@ -68,4 +69,7 @@ export class DocumentBlock {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updated_at!: Date;
+
+  @DeleteDateColumn({ type: 'timestamptz' })
+  deleted_at!: Date | null;
 }

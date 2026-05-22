@@ -82,6 +82,66 @@ export class DocumentVersionService {
     return this.toResponse(version);
   }
 
+  /**
+   * List all versions for a document
+   */
+  async findAll(docId: string, userId: string): Promise<VersionResponseDto[]> {
+    await this.requireAccess(docId, userId);
+
+    const versions = await this.versionRepo.find({
+      where: { document_id: docId },
+      order: { version_number: 'DESC' },
+    });
+
+    return versions.map((v) => this.toResponse(v));
+  }
+
+  /**
+   * Restore a document to a specific version
+   */
+  async restore(docId: string, userId: string, versionNumber: number) {
+    await this.requireAccess(docId, userId);
+
+    const version = await this.versionRepo.findOne({
+      where: { document_id: docId, version_number: versionNumber },
+    });
+
+    if (!version) {
+      throw new NotFoundException('Version not found');
+    }
+
+    //use transaction to ensure data integrity during restore
+    return this.dataSource.transaction(async (manager) => {
+      // 1. delete current blocks
+      await manager.delete(DocumentBlock, { document_id: docId });
+
+      // 2. Re-insert blocks from snapshot
+      const newBlocks = version.blocks_snapshot.map((b, index) =>
+        manager.create(DocumentBlock, {
+          type: b.type,
+          content: b.content,
+          position: index, // Preserve original order
+          document_id: docId,
+          last_edited_by_id: userId,
+        }),
+      );
+      await manager.save(DocumentBlock, newBlocks);
+
+      // 3. Create a new version marking this as a restore
+      const restoreVersion = manager.create(DocumentVersion, {
+        document_id: docId,
+        version_number: version.version_number + 0.1, // Decimal to mark as derived
+        blocks_snapshot: version.blocks_snapshot,
+        change_summary: `Restored from version ${version.version_number}`,
+        is_major: false,
+        created_by_id: userId,
+      });
+      await manager.save(DocumentVersion, restoreVersion);
+
+      return this.toResponse(restoreVersion);
+    });
+  }
+
   private toResponse(v: DocumentVersion): VersionResponseDto {
     return {
       id: v.id,

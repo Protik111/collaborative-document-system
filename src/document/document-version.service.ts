@@ -27,11 +27,15 @@ export class DocumentVersionService {
 
   private async requireAccess(docId: string, userId: string) {
     const doc = await this.docRepo.findOne({ where: { id: docId } });
+
+    const isMember = await this.memberService.hasMember(
+      doc!.workspace_id,
+      userId,
+    );
+
     if (!doc || doc.deleted_at)
       throw new NotFoundException('Document not found');
-    if (!(await this.memberService.hasMember(doc.workspace_id, userId))) {
-      throw new ForbiddenException('Access denied');
-    }
+    if (!isMember) throw new ForbiddenException('Access denied');
     return doc;
   }
 
@@ -99,20 +103,21 @@ export class DocumentVersionService {
   /**
    * Restore a document to a specific version
    */
-  async restore(docId: string, userId: string, versionNumber: number) {
+
+  async restore(
+    docId: string,
+    versionId: string,
+    userId: string,
+  ): Promise<VersionResponseDto> {
     await this.requireAccess(docId, userId);
 
     const version = await this.versionRepo.findOne({
-      where: { document_id: docId, version_number: versionNumber },
+      where: { id: versionId, document_id: docId },
     });
+    if (!version) throw new NotFoundException('Version not found');
 
-    if (!version) {
-      throw new NotFoundException('Version not found');
-    }
-
-    //use transaction to ensure data integrity during restore
     return this.dataSource.transaction(async (manager) => {
-      // 1. delete current blocks
+      // 1. Clear current blocks
       await manager.delete(DocumentBlock, { document_id: docId });
 
       // 2. Re-insert blocks from snapshot
@@ -120,24 +125,31 @@ export class DocumentVersionService {
         manager.create(DocumentBlock, {
           type: b.type,
           content: b.content,
-          position: index, // Preserve original order
+          position: index,
           document_id: docId,
           last_edited_by_id: userId,
         }),
       );
       await manager.save(DocumentBlock, newBlocks);
 
-      // 3. Create a new version marking this as a restore
+      // 3. Calculate next INTEGER version number safely
+      const maxVer = await manager.findOne(DocumentVersion, {
+        where: { document_id: docId },
+        order: { version_number: 'DESC' },
+      });
+      const nextVersionNumber = (maxVer?.version_number ?? 0) + 1;
+
+      // 4. Save restore record (integer version + clear audit trail)
       const restoreVersion = manager.create(DocumentVersion, {
         document_id: docId,
-        version_number: version.version_number + 0.1, // Decimal to mark as derived
+        version_number: nextVersionNumber,
         blocks_snapshot: version.blocks_snapshot,
         change_summary: `Restored from version ${version.version_number}`,
-        is_major: false,
+        is_major: true, // Treat restores as important checkpoints
         created_by_id: userId,
       });
-      await manager.save(DocumentVersion, restoreVersion);
 
+      await manager.save(DocumentVersion, restoreVersion);
       return this.toResponse(restoreVersion);
     });
   }

@@ -40,6 +40,6 @@ export class DocumentVersionController {
     @Req() req: Request,
   ) {
     const user = req.user as { userId: string };
-    return this.versionService.restore(docId, user.userId, parseInt(versionId));
+    return this.versionService.restore(docId, versionId, user.userId);
   }
 }

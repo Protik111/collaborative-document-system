@@ -7,14 +7,21 @@ import { Document } from './entities/document.entity';
 import { WorkspaceMemberModule } from 'src/workspace-member/workspace-member.module';
 import { DocumentBlockController } from './document-block.controller';
 import { DocumentBlockService } from './document-block.service';
+import { DocumentVersion } from './entities/document-version.entity';
+import { DocumentVersionController } from './document-version.controller';
+import { DocumentVersionService } from './document-version.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Document, DocumentBlock]),
+    TypeOrmModule.forFeature([Document, DocumentBlock, DocumentVersion]),
     WorkspaceMemberModule,
   ],
-  controllers: [DocumentController, DocumentBlockController],
-  providers: [DocumentService, DocumentBlockService],
-  exports: [DocumentService, DocumentBlockService],
+  controllers: [
+    DocumentController,
+    DocumentBlockController,
+    DocumentVersionController,
+  ],
+  providers: [DocumentService, DocumentBlockService, DocumentVersionService],
+  exports: [DocumentService, DocumentBlockService, DocumentVersionService],
 })
 export class DocumentModule {}

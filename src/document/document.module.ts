@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentBlock } from './entities/document-block.entity';
 import { Document } from './entities/document.entity';
 import { WorkspaceMemberModule } from 'src/workspace-member/workspace-member.module';
+import { AuthModule } from 'src/auth/auth.module';
 import { DocumentBlockController } from './document-block.controller';
 import { DocumentBlockService } from './document-block.service';
 import { DocumentVersion } from './entities/document-version.entity';
@@ -16,6 +17,7 @@ import { DocumentsGateway } from './documents.gateway';
   imports: [
     TypeOrmModule.forFeature([Document, DocumentBlock, DocumentVersion]),
     WorkspaceMemberModule,
+    AuthModule,
   ],
   controllers: [
     DocumentController,

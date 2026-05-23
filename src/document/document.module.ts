@@ -10,6 +10,7 @@ import { DocumentBlockService } from './document-block.service';
 import { DocumentVersion } from './entities/document-version.entity';
 import { DocumentVersionController } from './document-version.controller';
 import { DocumentVersionService } from './document-version.service';
+import { DocumentsGateway } from './documents.gateway';
 
 @Module({
   imports: [
@@ -21,7 +22,12 @@ import { DocumentVersionService } from './document-version.service';
     DocumentBlockController,
     DocumentVersionController,
   ],
-  providers: [DocumentService, DocumentBlockService, DocumentVersionService],
+  providers: [
+    DocumentService,
+    DocumentBlockService,
+    DocumentVersionService,
+    DocumentsGateway,
+  ],
   exports: [DocumentService, DocumentBlockService, DocumentVersionService],
 })
 export class DocumentModule {}

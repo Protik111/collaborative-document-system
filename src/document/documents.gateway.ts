@@ -12,6 +12,7 @@ import { Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
+import { DocumentBlockService } from './document-block.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -31,13 +32,17 @@ export class DocumentsGateway
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
+    private docBlockService: DocumentBlockService,
   ) {}
 
   async handleConnection(client: Socket) {
+    this.logger.debug(`Socket connection attempt: ${client.id}`);
     try {
       const token =
         client.handshake.auth?.token || client.handshake.query?.token;
+      
       if (!token) {
+        this.logger.warn(`Connection rejected: No token provided (socket: ${client.id})`);
         client.disconnect();
         return;
       }
@@ -45,6 +50,12 @@ export class DocumentsGateway
       const payload = this.jwtService.verify(token as string, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
+
+      if (!payload || !payload.sub) {
+        this.logger.warn(`Connection rejected: Invalid token payload (socket: ${client.id})`);
+        client.disconnect();
+        return;
+      }
 
       // Store socket ↔ user mapping
       const userId = payload.sub;
@@ -56,7 +67,7 @@ export class DocumentsGateway
 
       this.logger.log(`User ${payload.email} connected (socket: ${client.id})`);
     } catch (err) {
-      this.logger.error('Invalid WebSocket auth token');
+      this.logger.error(`Connection rejected: Auth error - ${err instanceof Error ? err.message : 'Unknown error'} (socket: ${client.id})`);
       client.disconnect();
     }
   }
@@ -69,7 +80,7 @@ export class DocumentsGateway
         this.userSockets.delete(userId);
       }
     }
-    this.logger.log(`User disconnected (socket: ${client.id})`);
+    this.logger.log(`User disconnected: ${client.data.user?.email || 'Unknown'} (socket: ${client.id})`);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -94,16 +105,76 @@ export class DocumentsGateway
   }
 
   @SubscribeMessage('block_update')
-  handleBlockUpdate(
+  async handleBlockUpdate(
     @MessageBody() data: { documentId: string; blockId: string; content: any },
     @ConnectedSocket() client: Socket,
   ) {
+    const userId = client.data.user.userId;
+    this.logger.debug(
+      `Received block_update: ${JSON.stringify(data)} from user ${userId}`,
+    );
+
+    // 1. Persist change to Database
+    try {
+      await this.docBlockService.update(data.blockId, data.documentId, userId, {
+        content: data.content,
+      });
+      this.logger.debug(`Successfully persisted block_update: ${data.blockId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist block update: ${data.blockId}. Data: ${JSON.stringify(data)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+
+    // 2. Broadcast to other users in the room
     client.broadcast.to(data.documentId).emit('block_updated', {
       blockId: data.blockId,
       content: data.content,
-      updatedBy: client.data.user.userId,
+      updatedBy: userId,
       email: client.data.user.email,
     });
+  }
+
+  @SubscribeMessage('block_create')
+  async handleBlockCreate(
+    @MessageBody()
+    data: {
+      documentId: string;
+      type: string;
+      content?: any;
+      position?: number;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data.user.userId;
+    this.logger.debug(
+      `Received block_create: ${JSON.stringify(data)} from user ${userId}`,
+    );
+
+    try {
+      const newBlock = await this.docBlockService.create(
+        data.documentId,
+        userId,
+        {
+          type: data.type as any,
+          content: data.content,
+          position: data.position,
+        },
+      );
+
+      this.logger.log(
+        `Block created via WebSocket: ${newBlock.id} (doc: ${data.documentId})`,
+      );
+
+      // Notify all users in the document room
+      this.server.to(data.documentId).emit('block_created', newBlock);
+    } catch (error) {
+      this.logger.error(
+        `Failed to create block via WebSocket. Data: ${JSON.stringify(data)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 
   // ─────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { UserModule } from './user/user.module';
 import { HealthController } from './health.controller';
 import { WorkspaceModule } from './workspace/workspace.module';
 import { WorkspaceMemberModule } from './workspace-member/workspace-member.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { WorkspaceMemberModule } from './workspace-member/workspace-member.modul
     DocumentModule,
     UserModule,
     WorkspaceMemberModule,
+    EventEmitterModule.forRoot({ global: true }),
   ],
   controllers: [HealthController],
 })

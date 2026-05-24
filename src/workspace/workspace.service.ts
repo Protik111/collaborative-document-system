@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Workspace } from './entities/workspace.entity';
-import { Repository, In, IsNull } from 'typeorm';
+import { Repository, In, IsNull, Not } from 'typeorm';
 import {
   WorkspaceMember,
   WorkspaceRole,
@@ -97,7 +97,7 @@ export class WorkspaceService {
     userId: string,
   ): Promise<WorkspaceResponseDto> {
     const workspace = await this.workspaceRepository.findOne({
-      where: { id: workspaceId, owner_id: userId },
+      where: { id: workspaceId },
     });
 
     if (!workspace) {
@@ -132,20 +132,32 @@ export class WorkspaceService {
       WorkspaceRole.ADMIN,
     ]);
 
-    // 2. if name is being updated, check for duplicates
-    if (updateDto?.name) {
+    // 2. check if workspace exists
+    const workspace = await this.workspaceRepository.findOne({
+      where: { id: workspaceId },
+    });
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    // 3. if name is being updated, check for duplicates for the OWNER
+    if (updateDto?.name && updateDto.name !== workspace.name) {
       const existing = await this.workspaceRepository.findOne({
-        where: { name: updateDto.name, owner_id: userId, id: workspaceId },
+        where: {
+          name: updateDto.name,
+          owner_id: workspace.owner_id,
+          id: Not(workspaceId),
+        },
         withDeleted: true,
       });
       if (existing) {
         throw new ConflictException(
-          'You already have a workspace with this name',
+          'A workspace with this name already exists for the owner',
         );
       }
     }
 
-    // 3. update workspace and return updated details
+    // 4. update workspace and return updated details
     await this.workspaceRepository.update(workspaceId, {
       name: updateDto.name,
       description: updateDto.description,

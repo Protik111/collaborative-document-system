@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +18,7 @@ import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { MemberResponseDto } from './dto/member-response.dto';
 import { UserService } from 'src/user/user.service';
 import { WorkspaceMemberService } from 'src/workspace-member/workspace-member.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class WorkspaceService {
@@ -27,6 +29,7 @@ export class WorkspaceService {
     private memberRepository: Repository<WorkspaceMember>,
     private readonly userService: UserService,
     private readonly workspaceMemberService: WorkspaceMemberService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -185,22 +188,17 @@ export class WorkspaceService {
     inviterId: string,
     inviteDto: { email: string; role: WorkspaceRole },
   ): Promise<MemberResponseDto> {
-    // 1. Verify inviter has permission (OWNER or ADMIN)
+    this.logger.log(
+      `Inviting ${inviteDto.email} to workspace ${workspaceId} as ${inviteDto.role}`,
+    );
+
+    // 1. Authorization
     await this.requireRole(workspaceId, inviterId, [
       WorkspaceRole.OWNER,
       WorkspaceRole.ADMIN,
     ]);
 
-    // 2. Find user by email
-    const user = await this.userService.findByEmailPublic(inviteDto.email);
-
-    if (!user) {
-      throw new NotFoundException('User with this email does not exist');
-    }
-
-    // 3. Prevent inviting OWNER role via invite (security)
     if ([WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(inviteDto.role)) {
-      // Only OWNER can assign elevated roles, and not via public invite
       const inviterMembership = await this.memberRepository.findOne({
         where: { workspace_id: workspaceId, user_id: inviterId },
       });
@@ -209,14 +207,58 @@ export class WorkspaceService {
       }
     }
 
-    // 4. Add member via WorkspaceMemberService
+    // 2. Find user by email
+    const user = await this.userService.findByEmailPublic(inviteDto.email);
+    if (!user) {
+      throw new NotFoundException('User not found. They must register first.');
+    }
+
+    if (user.id === inviterId) {
+      throw new ConflictException('You are already a member of this workspace');
+    }
+
+    // 3. Add member
     const membership = await this.workspaceMemberService.addMember(
       workspaceId,
       user.id,
       inviteDto.role,
     );
 
-    // 5. Return safe response
+    // 4. Fetch workspace (with NULL SAFETY)
+    const workspace = await this.workspaceRepository.findOne({
+      where: { id: workspaceId },
+      select: ['id', 'name'],
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    // 5. Emit events (workspace is now guaranteed to be non-null)
+    this.eventEmitter.emit('workspace.invite.accepted', {
+      targetUserId: user.id,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      invitedBy: inviterId,
+      role: inviteDto.role,
+      timestamp: new Date().toISOString(),
+    });
+
+    this.eventEmitter.emit('workspace.member.added', {
+      workspaceId: workspace.id,
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: inviteDto.role,
+      addedBy: inviterId,
+      timestamp: new Date().toISOString(),
+    });
+
+    this.logger.log(
+      `Invite sent: ${user.email} → ${workspace.name} as ${inviteDto.role}`,
+    );
+
+    // 6. Return DTO
     return {
       user_id: user.id,
       email: user.email,
@@ -225,6 +267,7 @@ export class WorkspaceService {
       joined_at: membership.created_at,
     };
   }
+  private readonly logger = new Logger(WorkspaceService.name);
 
   /**
    * Helper to check if user has one of the required roles in the workspace

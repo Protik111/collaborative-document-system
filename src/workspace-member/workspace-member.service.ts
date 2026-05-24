@@ -124,28 +124,65 @@ export class WorkspaceMemberService {
     targetUserId: string,
     actedByUserId: string,
   ): Promise<void> {
-    // Can't remove OWNER
-    if (targetUserId === actedByUserId) {
-      // Self-leave: allowed
+    // 1. Fetch requester's membership
+    const actorMembership = await this.memberRepo.findOne({
+      where: { workspace_id: workspaceId, user_id: actedByUserId },
+    });
+
+    if (!actorMembership) {
+      throw new ForbiddenException('You are not a member of this workspace');
     }
 
-    const membership = await this.memberRepo.findOne({
+    // 2. Fetch target's membership
+    const targetMembership = await this.memberRepo.findOne({
       where: { workspace_id: workspaceId, user_id: targetUserId },
     });
 
-    if (!membership) {
-      throw new NotFoundException('Member not found');
+    if (!targetMembership) {
+      throw new NotFoundException('Target member not found');
     }
 
-    if (
-      membership.role === WorkspaceRole.OWNER &&
-      targetUserId !== actedByUserId
-    ) {
-      throw new ForbiddenException('Cannot remove OWNER from workspace');
+    // 3. Authorization Logic
+    const isSelfRemoval = targetUserId === actedByUserId;
+
+    if (isSelfRemoval) {
+      // Role: OWNER cannot leave
+      if (actorMembership.role === WorkspaceRole.OWNER) {
+        throw new ForbiddenException(
+          'OWNER cannot leave the workspace. Delete the workspace or transfer ownership instead.',
+        );
+      }
+      // Anyone else can leave
+    } else {
+      // Removing someone else
+      // Only OWNER and ADMIN can remove others
+      if (
+        ![WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(actorMembership.role)
+      ) {
+        throw new ForbiddenException(
+          'Insufficient permissions to remove members',
+        );
+      }
+
+      // Hierarchy rules:
+      // ADMIN cannot remove OWNER
+      if (targetMembership.role === WorkspaceRole.OWNER) {
+        throw new ForbiddenException('Cannot remove the OWNER');
+      }
+
+      // ADMIN cannot remove other ADMINS
+      if (
+        actorMembership.role === WorkspaceRole.ADMIN &&
+        targetMembership.role === WorkspaceRole.ADMIN
+      ) {
+        throw new ForbiddenException('ADMIN cannot remove another ADMIN');
+      }
+
+      // OWNER can remove anyone (except self, handled by isSelfRemoval)
     }
 
-    // Soft delete
-    await this.memberRepo.softDelete(membership.id);
+    // 4. Soft delete
+    await this.memberRepo.softDelete(targetMembership.id);
   }
 
   /**

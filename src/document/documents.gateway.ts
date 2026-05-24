@@ -177,6 +177,78 @@ export class DocumentsGateway
     }
   }
 
+  @SubscribeMessage('block_delete')
+  async handleBlockDelete(
+    @MessageBody() data: { documentId: string; blockId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data.user.userId;
+    this.logger.debug(
+      `Received block_delete: blockId=${data.blockId} from user ${userId}`,
+    );
+
+    try {
+      await this.docBlockService.remove(data.blockId, data.documentId, userId);
+
+      this.logger.log(
+        `Block deleted via WebSocket: ${data.blockId} (doc: ${data.documentId})`,
+      );
+
+      // Broadcast to all users (including sender so their UI confirms deletion)
+      this.server.to(data.documentId).emit('block_deleted', {
+        blockId: data.blockId,
+        deletedBy: userId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete block ${data.blockId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
+  @SubscribeMessage('block_reorder')
+  async handleBlockReorder(
+    @MessageBody()
+    data: {
+      documentId: string;
+      blockId: string;
+      newPosition: number;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data.user.userId;
+    this.logger.debug(
+      `Received block_reorder: blockId=${data.blockId} newPosition=${data.newPosition} from user ${userId}`,
+    );
+
+    try {
+      const updated = await this.docBlockService.update(
+        data.blockId,
+        data.documentId,
+        userId,
+        { position: data.newPosition },
+      );
+
+      this.logger.log(
+        `Block reordered via WebSocket: ${data.blockId} → position ${data.newPosition}`,
+      );
+
+      // Broadcast new ordering to all in the room
+      this.server.to(data.documentId).emit('block_reordered', {
+        blockId: data.blockId,
+        newPosition: data.newPosition,
+        reorderedBy: userId,
+        updatedBlock: updated,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to reorder block ${data.blockId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────
   // ✨ NEW: Workspace-level events
   // ─────────────────────────────────────────────────────────────

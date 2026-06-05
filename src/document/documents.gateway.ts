@@ -82,7 +82,7 @@ export class DocumentsGateway
         this.userSockets.delete(userId);
       }
     }
-    this.logger.log(`User disconnected: ${client.data.user?.email || 'Unknown'} (socket: ${client.id})`);
+    this.logger.log(`User disconnected: ${client.data.user?.email || 'Unknown'} (socket: ${client.id}), all rooms left automatically`);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -101,6 +101,25 @@ export class DocumentsGateway
 
     // Notify others in the room
     client.broadcast.to(data.documentId).emit('user_joined', {
+      userId: client.data.user.userId,
+      email: client.data.user.email,
+    });
+
+    this.logger.debug(`Client ${client.id} is now in rooms: ${Array.from(client.rooms)}`);
+  }
+
+  @SubscribeMessage('leave_document')
+  handleLeaveDocument(
+    @MessageBody() data: { documentId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.leave(data.documentId);
+    this.logger.log(
+      `User ${client.data.user?.email} left document: ${data.documentId}`,
+    );
+
+    // Notify others
+    client.broadcast.to(data.documentId).emit('user_left', {
       userId: client.data.user.userId,
       email: client.data.user.email,
     });

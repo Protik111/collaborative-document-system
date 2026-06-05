@@ -41,6 +41,11 @@ export class DocumentController {
     return this.docService.search(wsId, user.userId, query);
   }
 
+  @Post('sync-previews')
+  async syncPreviews() {
+    return this.docService.syncAllPreviews();
+  }
+
   @Get()
   async findAll(@Param('workspaceId') wsId: string, @Req() req: Request) {
     const user = req.user as { userId: string };

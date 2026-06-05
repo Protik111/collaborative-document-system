@@ -69,6 +69,7 @@ export class DocumentBlockService {
       last_edited_by_id: userId,
     });
     const saved = await this.blockRepo.save(block);
+    await this.syncContentPreview(documentId);
     return this.toResponse(saved);
   }
 
@@ -127,6 +128,8 @@ export class DocumentBlockService {
       last_edited_by_id: userId,
     });
 
+    await this.syncContentPreview(document_id);
+
     const updated = await this.blockRepo.findOne({ where: { id: blockId } });
     return this.toResponse(updated!);
   }
@@ -143,6 +146,43 @@ export class DocumentBlockService {
     if (!block) throw new NotFoundException('Block not found');
 
     await this.blockRepo.softDelete(blockId);
+    await this.syncContentPreview(docId);
+  }
+
+  /**
+   * Regenerate document content preview based on its blocks
+   */
+  private async syncContentPreview(documentId: string) {
+    const blocks = await this.blockRepo.find({
+      where: { document_id: documentId },
+      order: { position: 'ASC' },
+      take: 10,
+    });
+
+    let preview = '';
+    for (const block of blocks) {
+      let text = '';
+      if (typeof block.content === 'string') {
+        text = block.content;
+      } else if (block.content && typeof block.content === 'object') {
+        // Handle Quill/other editors JSON structure if needed, 
+        // fallback to common 'text' property or just stringify
+        text = (block.content as any).text || (block.content as any).content || '';
+        if (!text && typeof block.content === 'object') {
+          // If it's a rich text object we don't recognize, we might need a better extractor
+          // but for now let's assume it's simple
+        }
+      }
+
+      if (text) {
+        preview += (preview ? ' ' : '') + text;
+      }
+
+      if (preview.length > 500) break;
+    }
+
+    const finalPreview = preview.substring(0, 500);
+    await this.docRepo.update(documentId, { content_preview: finalPreview });
   }
 
   /**

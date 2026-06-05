@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Document } from './entities/document.entity';
+import { DocumentBlock } from './entities/document-block.entity';
 import { Repository, DataSource } from 'typeorm';
 import { WorkspaceMemberService } from 'src/workspace-member/workspace-member.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
@@ -138,6 +139,41 @@ export class DocumentService {
       const updated = await manager.save(Document, doc);
       return this.toResponse(updated);
     });
+  }
+
+  /**
+   * Sync content preview for all existing documents (backfill)
+   */
+  async syncAllPreviews() {
+    const docs = await this.documentRepo.find();
+    let count = 0;
+    
+    for (const doc of docs) {
+      const blocks = await this.dataSource.getRepository(DocumentBlock).find({
+        where: { document_id: doc.id },
+        order: { position: 'ASC' },
+        take: 10,
+      });
+
+      let preview = '';
+      for (const block of blocks) {
+        let text = '';
+        if (typeof block.content === 'string') {
+          text = block.content;
+        } else if (block.content && typeof block.content === 'object') {
+          text = (block.content as any).text || (block.content as any).content || '';
+        }
+        if (text) {
+          preview += (preview ? ' ' : '') + text;
+        }
+        if (preview.length > 500) break;
+      }
+
+      await this.documentRepo.update(doc.id, { content_preview: preview.substring(0, 500) });
+      count++;
+    }
+    
+    return { message: `Successfully synchronized ${count} documents` };
   }
 
   /**

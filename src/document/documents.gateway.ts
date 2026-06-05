@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DocumentBlockService } from './document-block.service';
+import { DocumentService } from './document.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -33,6 +34,7 @@ export class DocumentsGateway
     private jwtService: JwtService,
     private configService: ConfigService,
     private docBlockService: DocumentBlockService,
+    private docService: DocumentService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -102,6 +104,42 @@ export class DocumentsGateway
       userId: client.data.user.userId,
       email: client.data.user.email,
     });
+  }
+
+  @SubscribeMessage('title_update')
+  async handleTitleUpdate(
+    @MessageBody() data: { documentId: string; title: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userId = client.data.user.userId;
+    this.logger.debug(
+      `Received title_update: documentId=${data.documentId} title="${data.title}" from user ${userId}`,
+    );
+
+    try {
+      const updated = await this.docService.updateDocument(
+        data.documentId,
+        userId,
+        { title: data.title },
+      );
+
+      this.logger.log(
+        `Title updated via WebSocket: doc=${data.documentId} → "${data.title}"`,
+      );
+
+      // Broadcast to all users in the document room (including sender for confirmation)
+      this.server.to(data.documentId).emit('title_updated', {
+        documentId: data.documentId,
+        title: updated.title,
+        updatedBy: userId,
+        email: client.data.user.email,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to update title for document ${data.documentId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 
   @SubscribeMessage('block_update')
@@ -223,23 +261,28 @@ export class DocumentsGateway
     );
 
     try {
-      const updated = await this.docBlockService.update(
+      await this.docBlockService.update(
         data.blockId,
         data.documentId,
         userId,
         { position: data.newPosition },
       );
 
+      // Fetch ALL blocks with their updated positions so clients can fully reconcile
+      const allBlocks = await this.docBlockService.findAll(
+        data.documentId,
+        userId,
+      );
+
       this.logger.log(
         `Block reordered via WebSocket: ${data.blockId} → position ${data.newPosition}`,
       );
 
-      // Broadcast new ordering to all in the room
-      this.server.to(data.documentId).emit('block_reordered', {
-        blockId: data.blockId,
-        newPosition: data.newPosition,
+      // Broadcast full block list to all clients in the room
+      this.server.to(data.documentId).emit('blocks_reordered', {
+        documentId: data.documentId,
+        blocks: allBlocks,
         reorderedBy: userId,
-        updatedBlock: updated,
       });
     } catch (error) {
       this.logger.error(

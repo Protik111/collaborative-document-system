@@ -8,6 +8,7 @@ import {
   Body,
   UseGuards,
   Req,
+  Query,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { DocumentService } from './document.service';
@@ -28,6 +29,16 @@ export class DocumentController {
   ) {
     const user = req.user as { userId: string };
     return this.docService.createDocument(wsId, user.userId, dto);
+  }
+
+  @Get('search')
+  async search(
+    @Param('workspaceId') wsId: string,
+    @Query('q') query: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as { userId: string };
+    return this.docService.search(wsId, user.userId, query);
   }
 
   @Get()

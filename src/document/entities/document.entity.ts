@@ -27,6 +27,15 @@ export class Document {
   @Column({ type: 'text', nullable: true })
   content_preview!: string | null; // First ~200 chars for list views
 
+  @Column({
+    type: 'tsvector',
+    select: false, // Never fetch this by default (it's large)
+    nullable: true,
+    generatedType: 'STORED',
+    asExpression: "to_tsvector('english', coalesce(title, '') || ' ' || coalesce(content_preview, ''))",
+  })
+  search_vector!: any;
+
   // Relations
   @ManyToOne(() => Workspace, (workspace) => workspace.documents, {
     eager: false,

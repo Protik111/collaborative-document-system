@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Document } from './entities/document.entity';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { WorkspaceMemberService } from 'src/workspace-member/workspace-member.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { DocumentResponseDto } from './dto/document-response.dto';
@@ -17,6 +17,7 @@ export class DocumentService {
     @InjectRepository(Document)
     private documentRepo: Repository<Document>,
     private workspaceMemberService: WorkspaceMemberService,
+    private readonly dataSource: DataSource, //Inject for transactions + locking
   ) {}
 
   /**
@@ -52,6 +53,40 @@ export class DocumentService {
   }
 
   /**
+   * Full-Text search
+   */
+    async search(
+    workspaceId: string,
+    userId: string,
+    query: string,
+  ): Promise<DocumentResponseDto[]> {
+    await this.verifymembership(workspaceId, userId);
+
+    // Fallback to normal list if query is too short
+    if (!query || query.trim().length < 2) {
+      const result = await this.findAll(workspaceId, userId);
+      return result.data;
+    }
+
+    // Use QueryBuilder for advanced PostgreSQL tsvector search + ranking
+    const docs = await this.documentRepo
+      .createQueryBuilder('doc')
+      .where('doc.workspace_id = :workspaceId', { workspaceId })
+      .andWhere('doc.deleted_at IS NULL')
+      .andWhere(
+        `to_tsvector('english', coalesce(doc.title, '') || ' ' || coalesce(doc.content_preview, '')) @@ plainto_tsquery('english', :query)`,
+        { query },
+      )
+      .orderBy(
+        `ts_rank(to_tsvector('english', coalesce(doc.title, '') || ' ' || coalesce(doc.content_preview, '')), plainto_tsquery('english', :query))`,
+        'DESC',
+      )
+      .getMany();
+
+    return docs.map((doc) => this.toResponse(doc));
+  }
+
+  /**
    * find all documents in a workspace (with pagination)
    */
   async findAll(
@@ -81,24 +116,28 @@ export class DocumentService {
     userId: string,
     dto: UpdateDocumentDto,
   ): Promise<DocumentResponseDto> {
-    const doc = await this.documentRepo.findOne({
-      where: { id: documentId },
-    });
-    if (!doc) {
-      throw new NotFoundException('Document not found');
-    }
+     return this.dataSource.transaction(async (manager) => {
+      // 1. Lock the row: No other transaction can read/write this row until we commit
+      const doc = await manager.findOne(Document, {
+        where: { id: documentId },
+        lock: { mode: 'pessimistic_write' }, // Equivalent to SELECT ... FOR UPDATE
+      });
 
-    await this.verifymembership(doc.workspace_id, userId);
+      if (!doc) {
+        throw new NotFoundException('Document not found');
+      }
 
-    await this.documentRepo.update(documentId, {
-      title: dto.title,
-      content_preview: dto.content_preview ?? null,
-    });
+      // 2. Verify access (still needed, as lock doesn't check business logic)
+      await this.verifymembership(doc.workspace_id, userId);
 
-    const updated = await this.documentRepo.findOne({
-      where: { id: documentId },
+      // 3. Apply updates
+      doc.title = dto.title ?? doc.title;
+      doc.content_preview = dto.content_preview ?? doc.content_preview;
+
+      // 4. Save (PostgreSQL automatically updates the generated search_vector column!)
+      const updated = await manager.save(Document, doc);
+      return this.toResponse(updated);
     });
-    return this.toResponse(updated!);
   }
 
   /**

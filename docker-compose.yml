@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: collab-docs-backend-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 11111
+      POSTGRES_DB: collaborative_docs
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_backend_data:/var/lib/postgresql/data
+    networks:
+      - collab-backend-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: collab-docs-backend-app
+    environment:
+      DATABASE_URL: postgresql://postgres:11111@postgres:5432/collaborative_docs
+      PORT: 3000
+      JWT_SECRET: collab-docs-secret
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_SECRET: collab-docs-secret-refresh
+      JWT_REFRESH_EXPIRES_IN: 7d
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    networks:
+      - collab-backend-network
+
+networks:
+  collab-backend-network:
+    driver: bridge
+
+volumes:
+  postgres_backend_data:

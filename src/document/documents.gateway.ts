@@ -312,7 +312,7 @@ export class DocumentsGateway
   }
 
   // ─────────────────────────────────────────────────────────────
-  // ✨ NEW: Workspace-level events
+  // NEW: Workspace-level events
   // ─────────────────────────────────────────────────────────────
 
   /**
@@ -404,7 +404,7 @@ export class DocumentsGateway
     workspaceId: string,
     event: string,
     payload: any,
-    excludeUserId?: string, // ✅ Optional parameter to skip a user
+    excludeUserId?: string, // Optional parameter to skip a user
   ) {
     // Get all sockets in the workspace room
     const room = `workspace:${workspaceId}`;
